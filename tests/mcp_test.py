@@ -249,6 +249,45 @@ def run():
     answer = call("send_keys", window=window, keys="ctrl+nonsense")
     record("send_keys-bad-key-refused", answer.get("reason") == "bad-keys", brief(answer))
 
+    # ---- the program in the BACKGROUND: another program is put in front of it,
+    # then it is read, pressed, filled and typed into without coming forward.
+    other_state = state_path + ".front"
+    front = call("launch_app", path=fixture_path, args=[other_state])
+    behind = wait_state("active", "0", 8.0)
+    record("background-setup", front.get("status") == "ok" and behind,
+           f"a second program was put in front; first program active={state().get('active')}", core=False)
+    if behind:
+        before = int(state().get("count", "0"))
+        view = call("read_tree", window=window, limit=100)
+        button, _ = find(view, "Button", "Press me")
+        field, _ = find(view, "Edit")
+        record("background-read", view.get("status") == "ok" and button is not None, f"{view.get('totalControls')} controls")
+        answer = call("run_steps", snapshot=view["snapshot"], limit=100, steps=[
+            {"id": button, "expect_text": f"Count: {before + 1}"},
+            {"id": field, "action": "set_text", "text": "set in background"}])
+        record("background-press-and-set", answer.get("verified") is True and wait_state("count", str(before + 1))
+               and wait_state("field", "set in background"),
+               f"fixture count={state().get('count')} field={state().get('field')!r}")
+        answer = call("menu", window=window, path="Actions > Increment", expect_text=f"Count: {before + 2}")
+        record("background-menu", answer.get("verified") is True and wait_state("count", str(before + 2)), brief(answer))
+        record("background-stays-behind", state().get("active") == "0",
+               f"after press, set text and menu the first program is still behind: active={state().get('active')}")
+        view = call("read_tree", window=window, limit=100)
+        field, _ = find(view, "Edit")
+        answer = call("set_text", snapshot=view["snapshot"], id=field, text="", limit=100)
+        view = answer.get("observation") or {}
+        call("click", snapshot=view.get("snapshot", ""), id=field, action="focus")
+        answer = call("send_keys", window=window, text="xyz")
+        arrived = wait_state("field", "xyz", 3.0)
+        record("background-keys-text", arrived,
+               f"in front={answer.get('programInFront')}; fixture field={state().get('field')!r}; active={state().get('active')}", core=False)
+        answer = call("send_keys", window=window, keys="backspace")
+        record("background-keys-key", wait_state("field", "xy", 3.0),
+               f"fixture field={state().get('field')!r}; active={state().get('active')}", core=False)
+        record("background-keys-stay-behind", state().get("active") == "0", f"active={state().get('active')}", core=False)
+    if front.get("pid"):
+        call("close_app", pid=front["pid"])
+
     # ---- close
     answer = call("close_app", pid=pid)
     record("close_app", answer.get("status") == "ok" and answer.get("closed") is True, brief(answer))
@@ -260,8 +299,10 @@ def run():
     # ---- leaving: what the server started ends with it
     relaunched = call("launch_app", path=fixture_path, args=[state_path])
     second = relaunched.get("pid")
+    closed_at = time.time()
     server.stdin.close()
     server.wait(timeout=20)
+    ended_ms = int((time.time() - closed_at) * 1000)
     time.sleep(0.5)
     gone = True
     if second:
@@ -270,7 +311,7 @@ def run():
             gone = False
         except OSError:
             gone = True
-    record("programs-end-with-the-server", bool(second) and gone, f"second fixture pid {second} gone={gone}")
+    record("programs-end-with-the-server", bool(second) and gone, f"second fixture pid {second} gone={gone}; the engine ended {ended_ms} ms after its input closed")
 
 
 try:
