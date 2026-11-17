@@ -43,7 +43,7 @@ jobs:
         timeout-minutes: 4
         run: |
           mkdir -p out/direct
-          ./build/axprobe trial --fixture "$PWD/build/axfixture" --out "$PWD/out/direct" --mode direct --textedit 2>&1 | tee out/direct/log.txt || true
+          ./build/axprobe trial --fixture "$PWD/build/axfixture" --out "$PWD/out/direct" --mode direct --textedit --screen-ocr 2>&1 | tee out/direct/log.txt || true
 
       - name: "Trial: child of python (as a tool server started by another program, over pipes)"
         timeout-minutes: 4
@@ -72,6 +72,13 @@ jobs:
           open -W -n --stdout "$PWD/out/bundle-open/log.txt" --stderr "$PWD/out/bundle-open/log.txt" \
             ./build/AXProbe.app --args trial --fixture "$PWD/build/axfixture" --out "$PWD/out/bundle-open" --mode bundle-open || true
           cat out/bundle-open/log.txt || true
+
+      - name: "Test kit: the one command, as a person would run it"
+        timeout-minutes: 6
+        run: |
+          mkdir -p out/kit && cd out/kit
+          KIT_REF="$GITHUB_SHA" bash "$GITHUB_WORKSPACE/kit.sh" 2>&1 | tee kit-output.txt
+          ls -l ax-kit-logs-*.tgz
 
       - name: Verdict
         if: always()

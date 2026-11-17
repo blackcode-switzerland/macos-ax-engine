@@ -35,6 +35,18 @@ bash scripts/build.sh
 The program that starts the probe (for example Terminal) must be allowed
 under System Settings > Privacy & Security > Accessibility.
 
+## The test kit: one command
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/blackcode-switzerland/macos-ax-engine/main/kit.sh | bash
+```
+
+It fetches this source into a temporary folder, builds it on your Mac, starts
+the fixture, runs the checks, prints a pass/fail table and packs the logs
+into one file in the folder you ran it from. It takes no picture of the
+screen and touches only the fixture it starts itself, and TextEdit only if
+TextEdit is not already open. Read `kit.sh` first; it is short.
+
 ## Rules the engine will keep
 
 - It acts only on programs it started itself.

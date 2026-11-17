@@ -1,6 +1,7 @@
 // axprobe: a small trial of the macOS Accessibility API (AXUIElement).
 //
-//   axprobe trial --fixture <path to axfixture> --out <folder> [--mode <label>] [--textedit]
+//   axprobe trial --fixture <path to axfixture> --out <folder> [--mode <label>] [--textedit] [--screen-ocr]
+//   axprobe trust [--prompt]
 //   axprobe ocr <image file>
 //
 // `trial` starts the fixture program itself, reads its controls, presses a
@@ -194,7 +195,7 @@ func recognise(_ path: String) -> [String]? {
 
 // ---------------- the trial ----------------
 
-func runTrial(fixture: String, out: String, mode: String, withTextEdit: Bool) -> Int32 {
+func runTrial(fixture: String, out: String, mode: String, withTextEdit: Bool, screenOcr: Bool) -> Int32 {
     try? FileManager.default.createDirectory(atPath: out, withIntermediateDirectories: true)
     let statePath = out + "/fixture-state.txt"
     try? FileManager.default.removeItem(atPath: statePath)
@@ -319,12 +320,16 @@ func runTrial(fixture: String, out: String, mode: String, withTextEdit: Bool) ->
     nodes = tree(window)
     treeDump += "\n== fixture window, after ==\n" + nodes.map { $0.line }.joined(separator: "\n") + "\n"
 
-    // 10. OCR on a picture of the screen, if the workflow took one. Informational.
+    // 10. OCR on a picture of the whole screen. Informational, and only when
+    // asked for with --screen-ocr: on a person's Mac a picture of the screen
+    // is private, so the default never takes one.
     let shot = out + "/screen.png"
     let capture = Process()
     capture.executableURL = URL(fileURLWithPath: "/usr/sbin/screencapture")
     capture.arguments = ["-x", shot]
-    if (try? capture.run()) != nil {
+    if !screenOcr {
+        skip("ocr-vision", "not asked for (--screen-ocr); no picture of the screen is taken")
+    } else if (try? capture.run()) != nil {
         capture.waitUntilExit()
         if let lines = recognise(shot) {
             let hit = lines.contains { $0.contains("Press me") } || lines.contains { $0.contains("Count") }
@@ -347,6 +352,12 @@ func runTrial(fixture: String, out: String, mode: String, withTextEdit: Bool) ->
 func textEdit() -> String {
     var dump = ""
     let bundle = "com.apple.TextEdit"
+    // Only a TextEdit we start ourselves is touched. One that is already open
+    // belongs to the person at the Mac: it is neither read nor closed.
+    if !NSRunningApplication.runningApplications(withBundleIdentifier: bundle).isEmpty {
+        skip("textedit", "TextEdit is already open; it is left alone. Quit it to include this part.")
+        return dump
+    }
     let open = Process()
     open.executableURL = URL(fileURLWithPath: "/usr/bin/open")
     open.arguments = ["-g", "-b", bundle]
@@ -415,7 +426,18 @@ func finish(out: String, mode: String, treeDump: String) -> Int32 {
     let failed = checks.filter { $0.status == "FAIL" }.count
     let verdict = failed == 0 ? "PASS" : "FAIL"
     print("")
+    print("RESULT   CHECK")
+    for check in checks {
+        print(check.status.padding(toLength: 9, withPad: " ", startingAt: 0) + check.name)
+    }
+    print("")
     print("mode \(mode): \(verdict) (\(checks.filter { $0.status == "PASS" }.count) core passed, \(failed) core failed)")
+    if checks.contains(where: { $0.name == "trusted" && $0.status == "FAIL" }) {
+        print("")
+        print("The Accessibility permission is missing. Allow the program you started this from")
+        print("(for example Terminal) under System Settings > Privacy & Security > Accessibility,")
+        print("then run it again. `axprobe trust --prompt` asks macOS to show its dialog.")
+    }
     let payload: [String: Any] = [
         "mode": mode,
         "verdict": verdict,
@@ -444,7 +466,15 @@ case "trial":
         exit(2)
     }
     exit(runTrial(fixture: fixture, out: out, mode: option("--mode") ?? "direct",
-                  withTextEdit: CommandLine.arguments.contains("--textedit")))
+                  withTextEdit: CommandLine.arguments.contains("--textedit"),
+                  screenOcr: CommandLine.arguments.contains("--screen-ocr")))
+case "trust":
+    // With --prompt macOS shows its own dialog, naming the program it holds responsible.
+    let prompt = CommandLine.arguments.contains("--prompt")
+    let key = kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String
+    let trusted = AXIsProcessTrustedWithOptions([key: prompt] as CFDictionary)
+    print("accessibility permission: \(trusted ? "granted" : "missing")")
+    exit(trusted ? 0 : 3)
 case "ocr":
     guard CommandLine.arguments.count > 2, let lines = recognise(CommandLine.arguments[2]) else {
         print("usage: axprobe ocr <image file>")
