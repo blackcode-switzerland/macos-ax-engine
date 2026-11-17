@@ -6,6 +6,20 @@
 
 import Cocoa
 
+final class TableSource: NSObject, NSTableViewDataSource, NSTableViewDelegate {
+    let rows: [[String]] = [["Alpha", "1"], ["Beta", "2"], ["Gamma", "3"]]
+
+    func numberOfRows(in tableView: NSTableView) -> Int {
+        return rows.count
+    }
+
+    func tableView(_ tableView: NSTableView, viewFor tableColumn: NSTableColumn?, row: Int) -> NSView? {
+        var index = 0
+        if let column = tableColumn, let found = tableView.tableColumns.firstIndex(of: column) { index = found }
+        return NSTextField(labelWithString: rows[row][index])
+    }
+}
+
 final class AppDelegate: NSObject, NSApplicationDelegate {
     let statePath: String
     var window: NSWindow!
@@ -15,36 +29,51 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     let field = NSTextField(string: "")
     let secret = NSSecureTextField(string: "")
     let check = NSButton(checkboxWithTitle: "Option", target: nil, action: nil)
+    let table = NSTableView()
+    let tableSource = TableSource()
 
     init(statePath: String) {
         self.statePath = statePath
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        window = NSWindow(contentRect: NSRect(x: 200, y: 300, width: 380, height: 230),
+        window = NSWindow(contentRect: NSRect(x: 200, y: 300, width: 380, height: 400),
                           styleMask: [.titled, .closable, .miniaturizable],
                           backing: .buffered, defer: false)
         window.title = "AX Fixture"
 
         let button = NSButton(title: "Press me", target: self, action: #selector(pressed(_:)))
-        button.frame = NSRect(x: 20, y: 180, width: 120, height: 32)
+        button.frame = NSRect(x: 20, y: 350, width: 120, height: 32)
         button.setAccessibilityIdentifier("press-button")
 
-        label.frame = NSRect(x: 160, y: 185, width: 200, height: 22)
+        label.frame = NSRect(x: 160, y: 355, width: 200, height: 22)
         label.setAccessibilityIdentifier("count-label")
 
-        field.frame = NSRect(x: 20, y: 135, width: 340, height: 24)
+        field.frame = NSRect(x: 20, y: 305, width: 340, height: 24)
         field.placeholderString = "Free text"
         field.setAccessibilityIdentifier("text-field")
 
-        secret.frame = NSRect(x: 20, y: 95, width: 340, height: 24)
+        secret.frame = NSRect(x: 20, y: 265, width: 340, height: 24)
         secret.placeholderString = "Password"
         secret.setAccessibilityIdentifier("secret-field")
 
-        check.frame = NSRect(x: 20, y: 55, width: 200, height: 24)
+        check.frame = NSRect(x: 20, y: 225, width: 200, height: 24)
         check.setAccessibilityIdentifier("option-check")
 
-        for view in [button, label, field, secret, check] as [NSView] {
+        for title in ["Name", "Number"] {
+            let column = NSTableColumn(identifier: NSUserInterfaceItemIdentifier(title))
+            column.title = title
+            column.width = 150
+            table.addTableColumn(column)
+        }
+        table.dataSource = tableSource
+        table.delegate = tableSource
+        table.setAccessibilityIdentifier("items-table")
+        let scroll = NSScrollView(frame: NSRect(x: 20, y: 20, width: 340, height: 190))
+        scroll.documentView = table
+        scroll.hasVerticalScroller = true
+
+        for view in [button, label, field, secret, check, scroll] as [NSView] {
             window.contentView?.addSubview(view)
         }
 
@@ -98,6 +127,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             + "field=\(field.stringValue)\n"
             + "secretLength=\(secret.stringValue.count)\n"
             + "check=\(check.state == .on ? 1 : 0)\n"
+            + "selectedRow=\(table.selectedRow)\n"
             + "active=\(NSApp.isActive ? 1 : 0)\n"
         if text == lastState { return }
         lastState = text

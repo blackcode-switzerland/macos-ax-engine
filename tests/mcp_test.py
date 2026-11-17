@@ -209,6 +209,22 @@ def run():
            and wait_state("count", "4") and not wait_state("count", "5", 1.0),
            json.dumps({k: answer.get(k) for k in ("status", "completed", "total", "stoppedBecause")}) + f"; fixture count={state().get('count')}")
 
+    # ---- table: rows as lines, every column through read_cells, select a row
+    view = call("read_tree", window=window, limit=100)
+    table, _ = find(view, "Table")
+    beta, beta_line = find(view, "Row", "Beta")
+    record("table-rows-listed", table is not None and beta is not None, beta_line or view.get("canvas", ""))
+    cells = call("read_cells", snapshot=view["snapshot"], id=table or 1)
+    record("read_cells", cells.get("totalRows") == 3 and 'row 1: "Beta" | "2"' in cells.get("cells", ""),
+           f"rows {cells.get('totalRows')}, columns {cells.get('totalColumns')}: " + cells.get("cells", "").replace("\n", " / ") + brief(cells))
+    block = call("read_cells", snapshot=view["snapshot"], id=table or 1, row=2, column=1, rows=1, columns=1)
+    record("read_cells-block", block.get("cells", "").strip() == 'row 2: "3"', block.get("cells", "").strip())
+    answer = call("read_cells", snapshot=view["snapshot"], id=button)
+    record("read_cells-refuses-non-grid", answer.get("reason") == "not-a-grid", brief(answer))
+    answer = call("click", snapshot=view["snapshot"], id=beta or 1, action="select", limit=100)
+    record("select-row", answer.get("verified") is True and wait_state("selectedRow", "1"),
+           brief(answer) + f"; fixture selectedRow={state().get('selectedRow')}")
+
     # ---- menu
     answer = call("menu", window=window)
     record("menu-list", answer.get("status") == "ok" and "Increment" in answer.get("menu", "") and "Shut Down" not in answer.get("menu", ""),

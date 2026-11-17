@@ -105,6 +105,17 @@ func startTime(_ pid: pid_t) -> Int? {
     return Int(started.tv_sec) * 1_000_000 + Int(started.tv_usec)
 }
 func sleepMs(_ ms: Int) { usleep(UInt32(ms) * 1000) }
+/// The first text found in an element or below it: its value, its title, then its children in order.
+func firstText(_ element: AXUIElement, depth: Int) -> String {
+    if let value = valueText(element), !value.isEmpty { return value }
+    if let title = text(element, kAXTitleAttribute as String), !title.isEmpty { return title }
+    if depth <= 0 { return "" }
+    for next in children(element) {
+        let found = firstText(next, depth: depth - 1)
+        if !found.isEmpty { return found }
+    }
+    return ""
+}
 
 // ---------------- what may be started ----------------
 
@@ -290,6 +301,8 @@ final class Engine {
         let role = text(element, kAXRoleAttribute as String) ?? "AXUnknown"
         if role == "AXMenuBar" || role == "AXMenu" { return }
         if !top { describe(element, role: role, into: capture) }
+        // A row is one line, named by its first column; read_cells gives every column.
+        if role == "AXRow" { return }
         for next in children(element) { walk(next, depth: depth + 1, into: capture, visited: &visited) }
     }
 
@@ -329,8 +342,11 @@ final class Engine {
         case "AXRow", "AXCell":
             if truth(element, kAXSelectedAttribute as String) == true { state = "selected" }
             if settable(element, kAXSelectedAttribute as String) { actions.append("select") }
-            if name.isEmpty {
-                name = children(element).compactMap { valueText($0) ?? text($0, kAXTitleAttribute as String) }.first { !$0.isEmpty } ?? ""
+            if name.isEmpty { name = firstText(element, depth: 3) }
+            if role == "AXRow" && settable(element, kAXDisclosingAttribute as String) {
+                let open = truth(element, kAXDisclosingAttribute as String) == true
+                if open { state = state.isEmpty ? "expanded" : state + ", expanded" }
+                actions.append(open ? "collapse" : "expand")
             }
         case "AXPopUpButton", "AXSlider", "AXIncrementor", "AXProgressIndicator":
             value = valueText(element)
@@ -677,11 +693,7 @@ final class Engine {
         var out = ""
         if firstRow < rows.count {
             for index in firstRow..<min(rows.count, firstRow + wantRows) {
-                let cells = children(rows[index]).map { cell -> String in
-                    if let value = valueText(cell), !value.isEmpty { return value }
-                    if let title = text(cell, kAXTitleAttribute as String), !title.isEmpty { return title }
-                    return children(cell).compactMap { valueText($0) ?? text($0, kAXTitleAttribute as String) }.first { !$0.isEmpty } ?? ""
-                }
+                let cells = children(rows[index]).map { firstText($0, depth: 2) }
                 totalColumns = max(totalColumns, cells.count)
                 let slice = firstColumn < cells.count ? Array(cells[firstColumn..<min(cells.count, firstColumn + wantColumns)]) : []
                 out += "row \(index): " + slice.map { quoted($0) }.joined(separator: " | ") + "\n"
@@ -721,6 +733,10 @@ final class Engine {
             return AXUIElementSetAttributeValue(control.element, kAXFocusedAttribute as CFString, kCFBooleanTrue)
         case "select" where control.role == "Row" || control.role == "Cell":
             return AXUIElementSetAttributeValue(control.element, kAXSelectedAttribute as CFString, kCFBooleanTrue)
+        case "expand" where control.role == "Row":
+            return AXUIElementSetAttributeValue(control.element, kAXDisclosingAttribute as CFString, kCFBooleanTrue)
+        case "collapse" where control.role == "Row":
+            return AXUIElementSetAttributeValue(control.element, kAXDisclosingAttribute as CFString, kCFBooleanFalse)
         default:
             return AXUIElementPerformAction(control.element, kAXPressAction as CFString)
         }
@@ -740,11 +756,11 @@ final class Engine {
             case "toggle":
                 return (now.state != control.state, "toggle-state-changed", "state before=\"\(control.state)\" after=\"\(now.state)\"")
             case "select":
-                return (now.state == "selected", "selected", "state after=\"\(now.state)\"")
+                return (now.state.contains("selected"), "selected", "state after=\"\(now.state)\"")
             case "expand":
-                return (now.state == "expanded", "expanded", "state after=\"\(now.state)\"")
+                return (now.state.contains("expanded"), "expanded", "state after=\"\(now.state)\"")
             case "collapse":
-                return (now.state != "expanded", "collapsed", "state after=\"\(now.state)\"")
+                return (!now.state.contains("expanded"), "collapsed", "state after=\"\(now.state)\"")
             case "focus":
                 let focused = truth(now.element, kAXFocusedAttribute as String)
                 return (focused, "keyboard-focus", "focused=\(focused.map { String($0) } ?? "unknown")")
