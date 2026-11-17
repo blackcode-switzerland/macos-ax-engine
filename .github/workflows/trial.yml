@@ -45,6 +45,12 @@ jobs:
           mkdir -p out/direct
           ./build/axprobe trial --fixture "$PWD/build/axfixture" --out "$PWD/out/direct" --mode direct --textedit --screen-ocr 2>&1 | tee out/direct/log.txt || true
 
+      - name: "Engine: the twelve tools over MCP, against the fixture"
+        timeout-minutes: 5
+        run: |
+          mkdir -p out/engine
+          python3 tests/mcp_test.py "$PWD/build/axengine" "$PWD/build/axfixture" "$PWD/out/engine" 2>&1 | tee out/engine/log.txt || true
+
       - name: "Trial: child of python (as a tool server started by another program, over pipes)"
         timeout-minutes: 4
         run: |

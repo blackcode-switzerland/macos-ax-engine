@@ -9,6 +9,7 @@ echo "swift: $(swiftc --version 2>&1 | head -1)"
 
 swiftc -swift-version 5 -O -o build/axprobe probe/main.swift
 swiftc -swift-version 5 -O -o build/axfixture fixture/main.swift
+swiftc -swift-version 5 -O -o build/axengine engine/main.swift
 
 # The same probe inside an application bundle with its own identity, to see
 # whether macOS judges the permission by the program or by what started it.
@@ -32,4 +33,4 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 PLIST
 codesign --force --sign - "$app" >/dev/null 2>&1 || echo "note: ad-hoc signing of the bundle failed"
 
-echo "built: build/axprobe build/axfixture $app"
+echo "built: build/axprobe build/axfixture build/axengine $app"

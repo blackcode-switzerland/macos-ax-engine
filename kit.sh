@@ -65,6 +65,12 @@ else
   say "3/4 running the checks (a small window named 'AX Fixture' appears for a few seconds)"
   "$work/build/axprobe" trial --fixture "$work/build/axfixture" --out "$logs/direct" --mode kit --textedit 2>&1 | tee "$logs/run.txt"
   status=${PIPESTATUS[0]}
+  if [ "$status" -eq 0 ]; then
+    say ""
+    say "    now the tools of the engine, the same way an agent would use them"
+    /usr/bin/env python3 "$work/tests/mcp_test.py" "$work/build/axengine" "$work/build/axfixture" "$logs/engine" 2>&1 | tee "$logs/engine-run.txt"
+    status=${PIPESTATUS[0]}
+  fi
 fi
 
 say ""
