@@ -426,9 +426,9 @@ func finish(out: String, mode: String, treeDump: String) -> Int32 {
     let failed = checks.filter { $0.status == "FAIL" }.count
     let verdict = failed == 0 ? "PASS" : "FAIL"
     print("")
-    print("RESULT   CHECK")
+    print("RESULT     CHECK")
     for check in checks {
-        print(check.status.padding(toLength: 9, withPad: " ", startingAt: 0) + check.name)
+        print(check.status.padding(toLength: 11, withPad: " ", startingAt: 0) + check.name)
     }
     print("")
     print("mode \(mode): \(verdict) (\(checks.filter { $0.status == "PASS" }.count) core passed, \(failed) core failed)")
