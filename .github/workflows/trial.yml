@@ -1,0 +1,86 @@
+name: accessibility-trial
+
+on:
+  push:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  trial:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, macos-15, macos-15-intel, macos-26-intel]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: System facts
+        run: |
+          sw_vers
+          uname -m
+          xcodebuild -version || true
+          echo "--- this shell and its ancestors"
+          pid=$$
+          while [ "$pid" -gt 1 ]; do
+            ps -o pid=,ppid=,comm= -p "$pid" || break
+            pid=$(ps -o ppid= -p "$pid" | tr -d ' ')
+          done
+          echo "--- privacy database: who holds Accessibility and Screen Recording"
+          query="select service, client, client_type, auth_value from access where service in ('kTCCServiceAccessibility','kTCCServiceScreenCapture','kTCCServicePostEvent','kTCCServiceListenEvent') order by service, client"
+          echo "system:"
+          sudo sqlite3 "/Library/Application Support/com.apple.TCC/TCC.db" "$query" || echo "(not readable)"
+          echo "user:"
+          sqlite3 "$HOME/Library/Application Support/com.apple.TCC/TCC.db" "$query" || echo "(not readable)"
+
+      - name: Build
+        run: bash scripts/build.sh
+
+      - name: "Trial: direct (probe started by this bash step)"
+        timeout-minutes: 4
+        run: |
+          mkdir -p out/direct
+          ./build/axprobe trial --fixture "$PWD/build/axfixture" --out "$PWD/out/direct" --mode direct --textedit 2>&1 | tee out/direct/log.txt || true
+
+      - name: "Trial: child of python (as a tool server started by another program, over pipes)"
+        timeout-minutes: 4
+        run: |
+          mkdir -p out/child-of-python
+          python3 - <<'PY' 2>&1 | tee out/child-of-python/log.txt || true
+          import os, subprocess
+          here = os.getcwd()
+          done = subprocess.run(
+              [here + "/build/axprobe", "trial", "--fixture", here + "/build/axfixture",
+               "--out", here + "/out/child-of-python", "--mode", "child-of-python"],
+              stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, timeout=180)
+          print(done.stdout.decode("utf-8", "replace"))
+          PY
+
+      - name: "Trial: bundle-direct (probe inside an app bundle, started by path)"
+        timeout-minutes: 4
+        run: |
+          mkdir -p out/bundle-direct
+          ./build/AXProbe.app/Contents/MacOS/axprobe trial --fixture "$PWD/build/axfixture" --out "$PWD/out/bundle-direct" --mode bundle-direct 2>&1 | tee out/bundle-direct/log.txt || true
+
+      - name: "Trial: bundle-open (same bundle started through the system launcher, not by the shell)"
+        timeout-minutes: 4
+        run: |
+          mkdir -p out/bundle-open
+          open -W -n --stdout "$PWD/out/bundle-open/log.txt" --stderr "$PWD/out/bundle-open/log.txt" \
+            ./build/AXProbe.app --args trial --fixture "$PWD/build/axfixture" --out "$PWD/out/bundle-open" --mode bundle-open || true
+          cat out/bundle-open/log.txt || true
+
+      - name: Verdict
+        if: always()
+        run: python3 scripts/verdict.py out
+
+      - name: Keep the logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: trial-${{ matrix.os }}
+          path: out
+          if-no-files-found: warn
