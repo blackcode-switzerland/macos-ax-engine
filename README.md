@@ -4,7 +4,22 @@ Reading and driving macOS programs through the Accessibility API
 (`AXUIElement`), without screenshots: read the controls, act on one, read
 again to verify.
 
-This repository is at its first step: a trial that answers one question.
+## The engine
+
+`engine/main.swift` is an MCP server (`axengine mcp`, JSON-RPC over
+stdin/stdout) with twelve tools: `launch_app`, `list_windows`, `read_tree`,
+`read_text`, `read_cells`, `click`, `set_text`, `run_steps`, `menu`,
+`send_keys`, `verify`, `close_app`. A window is read as text lines
+`#id Role "name" ="value" [actions]`; an action names a control by id and
+comes back with a check result and the new view.
+
+`tests/mcp_test.py` drives it as a client would, against the fixture, and
+compares every action with what the fixture itself recorded.
+
+Not there yet: text recognition (OCR), mouse clicks and scrolling, helper
+processes of a started program, and tests against real applications.
+
+The repository began with a trial that answers one question.
 
 ## The trial
 
@@ -47,11 +62,13 @@ into one file in the folder you ran it from. It takes no picture of the
 screen and touches only the fixture it starts itself, and TextEdit only if
 TextEdit is not already open. Read `kit.sh` first; it is short.
 
-## Rules the engine will keep
+## Rules the engine keeps
 
 - It acts only on programs it started itself.
 - It never reads or fills password fields.
-- It does not start browsers or command shells.
+- It does not start browsers, command shells, terminals, script runners or
+  system settings, and never takes over a program that is already open.
+- The Apple menu (shut down, log out) is never listed or triggered.
 
 ## Licence
 
