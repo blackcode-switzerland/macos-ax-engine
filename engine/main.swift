@@ -177,8 +177,13 @@ final class Capture {
     var controls: [Control] = []
     var text: [String] = []
     var signature: String {
-        return controls.map { $0.role + "\u{1}" + $0.name + "\u{1}" + ($0.value ?? "") + "\u{1}" + $0.state }.joined(separator: "\u{2}")
-            + "\u{3}" + text.joined(separator: "\u{2}")
+        var parts: [String] = []
+        for control in controls {
+            let fields: [String] = [control.role, control.name, control.value ?? "", control.state]
+            parts.append(fields.joined(separator: "\u{1}"))
+        }
+        let lines: String = text.joined(separator: "\u{2}")
+        return parts.joined(separator: "\u{2}") + "\u{3}" + lines
     }
     func present(_ wanted: String) -> Bool {
         return text.contains { $0.contains(wanted) } || controls.contains { $0.name.contains(wanted) || ($0.value ?? "").contains(wanted) }
